@@ -1,0 +1,21 @@
+# Dependências
+node_modules/
+
+# Builds e Binários do Electron (tudo o que é gerado na compilação)
+dist/
+build/
+*.exe
+*.dll
+*.pak
+*.bin
+resources/
+locales/
+LICENSES*
+LICENSE*
+
+# Banco de dados local e logs
+*.db
+*.sqlite
+*.sqlite3
+.env
+.DS_Store
