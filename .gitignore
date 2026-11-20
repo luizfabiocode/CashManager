@@ -1,0 +1,26 @@
+# Dependências (NUNCA subir, pesa 300MB+)
+node_modules/
+
+# Builds e Binários (Aqui mora o perigo do erro que você teve)
+dist/
+build/
+release/
+out/
+*.exe
+*.dll
+*.pak
+*.bin
+*.asar
+
+# Banco de dados local de desenvolvimento
+data/
+*.db
+*.sqlite
+*.sqlite3
+.env
+
+# Logs e arquivos temporários do Sistema
+*.log
+npm-debug.log*
+Thumbs.db
+.DS_Store
