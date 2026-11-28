@@ -1,4 +1,4 @@
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { initDatabase, closeDb, getDbPath } = require('./database/db');
@@ -6,16 +6,39 @@ const { runMigrationsWithBackup } = require('./database/migrations');
 const { registerIpcHandlers } = require('./ipc/registerIpcHandlers');
 const { setupAutoUpdater } = require('./updater');
 
+// Permite carregamento de módulos e arquivos locais no protocolo file://
+app.commandLine.appendSwitch('allow-file-access-from-files');
+
+function logApp(message, error = null) {
+  const timestamp = new Date().toISOString();
+  const logMsg = `[${timestamp}] ${message}`;
+  if (error) {
+    console.error(logMsg, error);
+  } else {
+    console.log(logMsg);
+  }
+  try {
+    const userData = app.getPath('userData');
+    if (!fs.existsSync(userData)) {
+      fs.mkdirSync(userData, { recursive: true });
+    }
+    const logFile = path.join(userData, 'app.log');
+    fs.appendFileSync(logFile, `${logMsg}${error ? ' ' + (error.stack || error) : ''}\n`);
+  } catch (e) {}
+}
+
 let mainWindow = null;
 
 function createWindow() {
+  const iconPath = path.join(__dirname, '../renderer/src/assets/logo.svg');
+
   mainWindow = new BrowserWindow({
     width: 1320,
     height: 880,
     minWidth: 1080,
     minHeight: 720,
     title: 'Ca$hManager',
-    icon: path.join(__dirname, '../renderer/src/assets/logo.svg'),
+    ...(fs.existsSync(iconPath) ? { icon: iconPath } : {}),
     backgroundColor: '#0b0f19',
     show: false,
     webPreferences: {
@@ -23,34 +46,33 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
-      enableRemoteModule: false,
-      spellcheck: false
+      spellcheck: false,
+      webSecurity: false // Libera carregamento de módulos locais via file://
     }
   });
 
-  // Configuração estrita de Content Security Policy (CSP)
-  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self' http://localhost:5173 ws://localhost:5173; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:5173; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com http://localhost:5173; font-src 'self' https://fonts.gstatic.com data: http://localhost:5173; img-src 'self' data: https: http://localhost:5173; connect-src 'self' http://localhost:5173 ws://localhost:5173;"
-        ]
-      }
+  const isDev = !app.isPackaged;
+  
+  if (isDev) {
+    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173');
+  } else {
+    const indexPath = path.join(__dirname, '../../dist/renderer/index.html');
+    const exists = fs.existsSync(indexPath);
+    logApp(`[Main] Modo Produção Detectado. Caminho: ${indexPath} | Arquivo Existe: ${exists}`);
+
+    mainWindow.loadFile(indexPath).catch(err => {
+      logApp('[Main Error] Erro ao carregar index.html via loadFile:', err);
     });
+  }
+
+  // Log de carregamento e falhas no renderer
+  mainWindow.webContents.on('did-finish-load', () => {
+    logApp('[Main] Página HTML carregada com sucesso (did-finish-load)');
   });
 
-  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  const distPath = path.join(__dirname, '../../dist/renderer/index.html');
-
-  if (isDev && process.env.VITE_DEV_SERVER_URL) {
-    mainWindow.loadURL(process.env.VITE_DEV_SERVER_URL);
-  } else if (fs.existsSync(distPath)) {
-    mainWindow.loadFile(distPath);
-  } else {
-    // Fallback para dev local ou index direto
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
-  }
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+    logApp(`[Main Error] Falha de carregamento: ${errorCode} - ${errorDescription} (${validatedURL})`);
+  });
 
   // Configuração de abertura de links externos no navegador padrão (WhatsApp, etc)
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -72,7 +94,7 @@ function createWindow() {
     }
   });
 
-  // Atalhos de desenvolvedor: F12 ou Ctrl+Shift+I / Cmd+Opt+I para DevTools, F5 / Ctrl+R para recarregar
+  // Atalhos de desenvolvedor: F12 para DevTools, F5 para recarregar
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.key === 'F12' || (input.control && input.shift && input.key.toLowerCase() === 'i') || (input.meta && input.alt && input.key.toLowerCase() === 'i')) {
       mainWindow.webContents.toggleDevTools();

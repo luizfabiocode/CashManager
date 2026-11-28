@@ -12,6 +12,7 @@ import {
   FileSpreadsheet, 
   RefreshCw 
 } from 'lucide-react';
+import { useTheme } from '../context/ThemeContext';
 
 /**
  * Tela de Configurações & Backup do Ca$hManager
@@ -19,14 +20,19 @@ import {
  * backups (.sqlite e .db), restauração do banco e exportação em CSV.
  */
 export default function ConfiguracoesView({ 
-  config, 
+  config: propConfig, 
   refreshConfig, 
-  cadastrarPin, 
-  theme = 'light', 
-  toggleTheme, 
-  isDark = false, 
-  addToast 
+  cadastrarPin: propCadastrarPin, 
+  theme: propTheme, 
+  toggleTheme: propToggleTheme, 
+  isDark: propIsDark, 
+  addToast: propAddToast 
 }) {
+  const contextTheme = useTheme();
+  const theme = propTheme || contextTheme.theme;
+  const isDark = propIsDark !== undefined ? propIsDark : contextTheme.isDark;
+  const toggleTheme = propToggleTheme || contextTheme.toggleTheme;
+
   const [chavePix, setChavePix] = useState('');
   const [salvandoPix, setSalvandoPix] = useState(false);
   const [novoPin, setNovoPin] = useState('');
@@ -35,11 +41,34 @@ export default function ConfiguracoesView({
   const [statusUpdater, setStatusUpdater] = useState('Sistema pronto');
   const [checandoUpdater, setChecandoUpdater] = useState(false);
 
-  useEffect(() => {
-    if (config?.chave_pix) {
-      setChavePix(config.chave_pix);
+  const addToast = (msg, tipo = 'info') => {
+    if (propAddToast) {
+      propAddToast(msg, tipo);
+    } else {
+      alert(msg);
     }
-  }, [config]);
+  };
+
+  useEffect(() => {
+    if (propConfig?.chave_pix) {
+      setChavePix(propConfig.chave_pix);
+    } else {
+      // Carrega configuração de PIX do backend se propConfig não foi passado
+      async function carregarChave() {
+        try {
+          if (window.api?.auth?.obterConfiguracoes) {
+            const res = await window.api.auth.obterConfiguracoes();
+            if (res && res.success && res.data?.chave_pix) {
+              setChavePix(res.data.chave_pix);
+            }
+          }
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      carregarChave();
+    }
+  }, [propConfig]);
 
   const handleSalvarPix = async (e) => {
     e.preventDefault();
@@ -47,15 +76,15 @@ export default function ConfiguracoesView({
     try {
       if (window.api?.auth) {
         const res = await window.api.auth.atualizarChavePix(chavePix);
-        if (res.success) {
-          addToast?.('Chave PIX padrão atualizada com sucesso!', 'success');
+        if (res && res.success) {
+          addToast('Chave PIX padrão atualizada com sucesso!', 'success');
           refreshConfig?.();
         } else {
-          addToast?.(res.error || 'Erro ao atualizar chave PIX', 'error');
+          addToast(res?.error || 'Erro ao atualizar chave PIX', 'error');
         }
       }
     } catch (err) {
-      addToast?.(err.message, 'error');
+      addToast(err.message, 'error');
     } finally {
       setSalvandoPix(false);
     }
@@ -64,25 +93,28 @@ export default function ConfiguracoesView({
   const handleAtualizarPin = async (e) => {
     e.preventDefault();
     if (!/^\d{4}$/.test(novoPin)) {
-      addToast?.('O PIN deve conter exatamente 4 números.', 'error');
+      addToast('O PIN deve conter exatamente 4 números.', 'error');
       return;
     }
     if (novoPin !== confirmaPin) {
-      addToast?.('A confirmação do PIN não coincide.', 'error');
+      addToast('A confirmação do PIN não coincide.', 'error');
       return;
     }
     setAtualizandoPin(true);
     try {
-      const res = await cadastrarPin(novoPin);
-      if (res.success) {
-        addToast?.('PIN de segurança atualizado com sucesso!', 'success');
+      const res = propCadastrarPin
+        ? await propCadastrarPin(novoPin)
+        : await window.api.auth.cadastrarPin(novoPin);
+
+      if (res && res.success) {
+        addToast('PIN de segurança atualizado com sucesso!', 'success');
         setNovoPin('');
         setConfirmaPin('');
       } else {
-        addToast?.(res.error || 'Erro ao atualizar PIN', 'error');
+        addToast(res?.error || 'Erro ao atualizar PIN', 'error');
       }
     } catch (err) {
-      addToast?.(err.message, 'error');
+      addToast(err.message, 'error');
     } finally {
       setAtualizandoPin(false);
     }
@@ -96,13 +128,13 @@ export default function ConfiguracoesView({
         if (res.success) {
           const msg = res.data?.mensagem || 'Backup portável SQLite gerado com sucesso!';
           const avisoCripto = res.data?.criptografado ? '⚠️ Arquivo criptografado (interno).' : '';
-          addToast?.(avisoCripto || msg.split('\n')[0], res.data?.criptografado ? 'warning' : 'success');
+          addToast(avisoCripto || msg.split('\n')[0], res.data?.criptografado ? 'warning' : 'success');
         } else {
-          addToast?.(res.error || 'Erro ao gerar backup', 'error');
+          addToast(res.error || 'Erro ao gerar backup portável.', 'error');
         }
       }
     } catch (err) {
-      addToast?.(err.message, 'error');
+      addToast(err.message, 'error');
     }
   };
 
@@ -112,37 +144,35 @@ export default function ConfiguracoesView({
         const res = await window.api.backup.gerarBackupCriptografado();
         if (res.data?.cancelado) return;
         if (res.success) {
-          addToast?.('Backup interno seguro (.db) gerado com sucesso!', 'success');
+          addToast('Backup interno seguro (.db) gerado com sucesso!', 'success');
         } else {
-          addToast?.(res.error || 'Erro ao gerar backup', 'error');
+          addToast(res.error || 'Erro ao gerar backup seguro.', 'error');
         }
       }
     } catch (err) {
-      addToast?.(err.message, 'error');
+      addToast(err.message, 'error');
     }
   };
 
   const handleRestaurar = async () => {
-    const confirmou = window.confirm(
-      'ATENÇÃO: A restauração substituirá todos os dados locais pelo arquivo de backup selecionado.\n\n' +
-      'Selecione APENAS arquivos .db gerados pela opção "Backup Seguro (Restaurável)" do Ca$hManager.\n\n' +
-      'Deseja continuar?'
+    const confirmar = window.confirm(
+      'ATENÇÃO: A restauração substituirá todos os dados atuais do banco pelo arquivo selecionado. Deseja prosseguir?'
     );
-    if (!confirmou) return;
+    if (!confirmar) return;
 
     try {
       if (window.api?.backup) {
         const res = await window.api.backup.restaurarBackup();
         if (res.data?.cancelado) return;
         if (res.success) {
-          addToast?.(res.data?.mensagem?.split('\n')[0] || 'Banco de dados restaurado com sucesso!', 'success');
-          setTimeout(() => window.location.reload(), 1800);
+          alert('Banco de dados restaurado com sucesso! O aplicativo será recarregado.');
+          window.location.reload();
         } else {
-          addToast?.(res.error || 'Erro ao restaurar backup', 'error');
+          addToast(res.error || 'Erro ao restaurar backup.', 'error');
         }
       }
     } catch (err) {
-      addToast?.(err.message, 'error');
+      addToast(err.message, 'error');
     }
   };
 
@@ -151,11 +181,11 @@ export default function ConfiguracoesView({
       if (window.api?.backup) {
         const res = await window.api.backup.exportarCSV(tabela);
         if (res.success && !res.data?.cancelado) {
-          addToast?.(`Relatório de ${rotulo} exportado em .csv com sucesso!`, 'success');
+          addToast(`Relatório de ${rotulo} exportado em .csv com sucesso!`, 'success');
         }
       }
     } catch (err) {
-      addToast?.(err.message, 'error');
+      addToast(err.message, 'error');
     }
   };
 
@@ -167,10 +197,10 @@ export default function ConfiguracoesView({
         const res = await window.api.updater.verificar();
         if (res.success && res.data?.result) {
           setStatusUpdater(`Nova versão ${res.data.result.version} encontrada!`);
-          addToast?.(`Nova versão disponível: ${res.data.result.version}`, 'info');
+          addToast(`Nova versão disponível: ${res.data.result.version}`, 'info');
         } else {
           setStatusUpdater('Seu aplicativo está na versão mais recente (v1.0.0).');
-          addToast?.('Você já possui a versão mais recente.', 'success');
+          addToast('Você já possui a versão mais recente.', 'success');
         }
       }
     } catch {
@@ -187,8 +217,8 @@ export default function ConfiguracoesView({
         <div className="p-6 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col justify-between">
           <div>
             <div className="flex items-center gap-3 mb-2">
-              <div className="p-2 rounded-xl bg-blue-500/10 text-blue-500">
-                {isDark ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+              <div className={`p-2 rounded-xl ${isDark ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-500'}`}>
+                {isDark ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
               </div>
               <h4 className="text-base font-bold font-heading text-slate-900 dark:text-white">
                 Aparência & Tema Visual
@@ -198,16 +228,17 @@ export default function ConfiguracoesView({
               Alterne entre o Modo Escuro e Claro com persistência automática de preferências.
             </p>
           </div>
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
+          <div className="flex items-center justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700">
             <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-              Tema Atual: <strong className="capitalize text-blue-600 dark:text-blue-400">{theme}</strong>
+              Tema Atual: <strong className="font-bold text-blue-600 dark:text-blue-400">{isDark ? 'Modo Escuro' : 'Modo Claro'}</strong>
             </span>
             <button
               onClick={toggleTheme}
-              className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-md shadow-blue-600/20 active:scale-95 transition-all"
+              type="button"
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-md shadow-blue-600/20 hover:scale-[1.02] active:scale-95 transition-all"
             >
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-              <span>Alternar para {isDark ? 'Modo Claro' : 'Modo Escuro'}</span>
+              {isDark ? <Sun className="w-4 h-4 text-amber-300" /> : <Moon className="w-4 h-4 text-blue-200" />}
+              <span>{isDark ? 'Mudar para Modo Claro' : 'Mudar para Modo Escuro'}</span>
             </button>
           </div>
         </div>
@@ -316,8 +347,6 @@ export default function ConfiguracoesView({
           </p>
         </div>
 
-        {/* NOTA: Bloco de aviso em amarelo sobre .sqlite e .db removido para simplificar e limpar o layout */}
-
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <button
@@ -380,28 +409,28 @@ export default function ConfiguracoesView({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <button
               onClick={() => handleExportarCSV('clientes', 'Clientes')}
-              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm hover:scale-105 active:scale-95"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-500" />
               <span>Clientes</span>
             </button>
             <button
               onClick={() => handleExportarCSV('emprestimos', 'Empréstimos')}
-              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm hover:scale-105 active:scale-95"
             >
               <FileSpreadsheet className="w-4 h-4 text-blue-500" />
               <span>Empréstimos</span>
             </button>
             <button
               onClick={() => handleExportarCSV('parcelas', 'Parcelas')}
-              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm hover:scale-105 active:scale-95"
             >
               <FileSpreadsheet className="w-4 h-4 text-purple-500" />
               <span>Parcelas</span>
             </button>
             <button
               onClick={() => handleExportarCSV('movimentacoes_caixa', 'Fluxo de Caixa')}
-              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+              className="flex items-center justify-center gap-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all shadow-sm hover:scale-105 active:scale-95"
             >
               <FileSpreadsheet className="w-4 h-4 text-amber-500" />
               <span>Caixa</span>
@@ -424,7 +453,7 @@ export default function ConfiguracoesView({
         <button
           onClick={handleVerificarAtualizacao}
           disabled={checandoUpdater}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-60"
+          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition-all disabled:opacity-60 hover:scale-105 active:scale-95"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${checandoUpdater ? 'animate-spin' : ''}`} />
           <span>Checar Novas Versões</span>
