@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { 
   Wallet, 
   ArrowDownLeft, 
@@ -12,11 +13,12 @@ import {
   Filter,
   DollarSign
 } from 'lucide-react';
-
-function formatarMoeda(valor) {
-  const num = typeof valor === 'number' ? valor : parseFloat(valor) || 0;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-}
+import { 
+  formatarMoeda, 
+  handleMoedaChange, 
+  parseMoedaParaFloat, 
+  prevenirEnter 
+} from '../utils/moeda';
 
 function formatarData(dataStr) {
   if (!dataStr) return '-';
@@ -88,14 +90,14 @@ export default function CaixaView() {
   // Salvar nova movimentação
   const handleSalvarMovimentacao = async (e) => {
     e.preventDefault();
-    const val = parseFloat(novoValor.replace(',', '.'));
+    const val = parseMoedaParaFloat(novoValor);
     if (isNaN(val) || val <= 0) {
-      alert('Informe um valor numérico válido maior que zero.');
+      toast.error('Informe um valor numérico válido maior que zero.');
       return;
     }
 
     if (!novaDescricao.trim()) {
-      alert('Informe uma descrição para a movimentação.');
+      toast.error('Informe uma descrição para a movimentação.');
       return;
     }
 
@@ -110,18 +112,18 @@ export default function CaixaView() {
         });
 
         if (res && (res.success || res.id)) {
-          alert('Movimentação registrada com sucesso!');
           setIsModalOpen(false);
           setNovoValor('');
           setNovaDescricao('');
+          toast.success('Movimentação registrada com sucesso!');
           await carregarDadosCaixa();
         } else {
-          alert(res?.error || 'Erro ao registrar movimentação.');
+          toast.error(res?.error || 'Erro ao registrar movimentação.');
         }
       }
     } catch (err) {
       console.error(err);
-      alert(err.message || 'Falha ao processar movimentação.');
+      toast.error(err.message || 'Falha ao processar movimentação.');
     } finally {
       setSalvandoMov(false);
     }
@@ -394,7 +396,7 @@ export default function CaixaView() {
               </button>
             </div>
 
-            <form onSubmit={handleSalvarMovimentacao} className="p-6 space-y-4">
+            <form onSubmit={handleSalvarMovimentacao} onKeyDown={prevenirEnter} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                   Tipo de Movimentação *
@@ -430,12 +432,11 @@ export default function CaixaView() {
                   Valor (R$) *
                 </label>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0.01"
+                  type="text"
+                  inputMode="decimal"
                   required
                   value={novoValor}
-                  onChange={(e) => setNovoValor(e.target.value)}
+                  onChange={(e) => handleMoedaChange(e, setNovoValor)}
                   placeholder="0,00"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
                 />

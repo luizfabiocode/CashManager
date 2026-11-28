@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { 
   CalendarClock, 
   Search, 
@@ -12,11 +13,7 @@ import {
   AlertTriangle,
   ArrowRight
 } from 'lucide-react';
-
-function formatarMoeda(valor) {
-  const num = typeof valor === 'number' ? valor : parseFloat(valor) || 0;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-}
+import { formatarMoeda } from '../utils/moeda';
 
 function formatarData(dataStr) {
   if (!dataStr) return '-';
@@ -88,32 +85,38 @@ export default function ParcelasView() {
   }, [carregarParcelas]);
 
   // Ação de dar baixa
-  const handleDarBaixa = async (parcela, e) => {
+  const handleDarBaixa = (parcela, e) => {
     if (e) e.stopPropagation();
     
-    const confirmar = window.confirm(
-      `Confirmar o recebimento da Parcela #${parcela.numero_parcela} (${parcela.cliente_nome}) no valor de ${formatarMoeda(parcela.valor)}?`
-    );
-    if (!confirmar) return;
-
-    setBaixandoId(parcela.id);
-    try {
-      if (window.api?.parcelas?.darBaixa) {
-        const hoje = new Date().toISOString().split('T')[0];
-        const res = await window.api.parcelas.darBaixa(parcela.id, hoje);
-        if (res && (res.success || res.success !== false)) {
-          alert(`Parcela baixada com sucesso! Entrada de ${formatarMoeda(parcela.valor)} lançada no caixa.`);
-          await carregarParcelas();
-        } else {
-          alert(res?.error || 'Erro ao dar baixa na parcela.');
+    toast(`Confirmar o recebimento da Parcela #${parcela.numero_parcela}?`, {
+      description: `${parcela.cliente_nome} - ${formatarMoeda(parcela.valor)}`,
+      action: {
+        label: 'Confirmar',
+        onClick: async () => {
+          setBaixandoId(parcela.id);
+          try {
+            if (window.api?.parcelas?.darBaixa) {
+              const hoje = new Date().toISOString().split('T')[0];
+              const res = await window.api.parcelas.darBaixa(parcela.id, hoje);
+              if (res && (res.success || res.success !== false)) {
+                toast.success(`Parcela baixada com sucesso! Entrada de ${formatarMoeda(parcela.valor)} lançada no caixa.`);
+                await carregarParcelas();
+              } else {
+                toast.error(res?.error || 'Erro ao dar baixa na parcela.');
+              }
+            }
+          } catch (err) {
+            console.error(err);
+            toast.error(err.message || 'Falha ao processar baixa.');
+          } finally {
+            setBaixandoId(null);
+          }
         }
+      },
+      cancel: {
+        label: 'Cancelar'
       }
-    } catch (err) {
-      console.error(err);
-      alert(err.message || 'Falha ao processar baixa.');
-    } finally {
-      setBaixandoId(null);
-    }
+    });
   };
 
   // Disparo de mensagem no WhatsApp
@@ -122,7 +125,7 @@ export default function ParcelasView() {
 
     const telLimpo = limparTelefone(parcela.cliente_telefone);
     if (!telLimpo || telLimpo.length < 10) {
-      alert(`O cliente "${parcela.cliente_nome}" não possui telefone válido cadastrado.`);
+      toast.error(`O cliente "${parcela.cliente_nome}" não possui telefone válido cadastrado.`);
       return;
     }
 

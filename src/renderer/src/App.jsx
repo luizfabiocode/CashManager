@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Toaster } from 'sonner';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import Sidebar from './components/Sidebar';
 import Header from './components/Header';
@@ -15,6 +16,12 @@ function AppContent() {
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-[#0b0f19] text-gray-800 dark:text-gray-200 font-sans overflow-hidden transition-colors duration-200">
+      <Toaster 
+        theme={isDark ? 'dark' : 'light'} 
+        position="top-right" 
+        richColors 
+        closeButton 
+      />
       <Sidebar 
         activeTab={activeTab} 
         setActiveTab={setActiveTab} 

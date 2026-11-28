@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { 
   DollarSign, 
   X, 
@@ -12,14 +13,13 @@ import {
   ArrowRight,
   ShieldCheck
 } from 'lucide-react';
-
-/**
- * Utilitário de formatação de moeda brasileira (BRL)
- */
-function formatarMoeda(valor) {
-  const num = typeof valor === 'number' ? valor : parseFloat(valor) || 0;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-}
+import { 
+  formatarMoeda, 
+  formatarNumeroPtBR, 
+  handleMoedaChange, 
+  parseMoedaParaFloat, 
+  prevenirEnter 
+} from '../../utils/moeda';
 
 /**
  * Utilitário de formatação de data ISO para DD/MM/AAAA
@@ -54,47 +54,6 @@ function formatarTelefone(tel) {
 }
 
 /**
- * Converte valor numérico para string com formato monetário amigável (ex: 250 -> "250,00")
- */
-function formatarInputMoeda(val) {
-  if (val === null || val === undefined || val === '') return '';
-  const num = typeof val === 'number' ? val : parseFloat(val);
-  if (isNaN(num)) return '';
-  return num.toFixed(2).replace('.', ',');
-}
-
-/**
- * Converte string digitada livremente ("1.250,50", "250,50", "250.50") para Float válido
- */
-function converterStringParaFloat(str) {
-  if (!str) return 0;
-  if (typeof str === 'number') return str;
-  let s = String(str).trim();
-  if (s.includes('.') && s.includes(',')) {
-    s = s.replace(/\./g, '').replace(',', '.');
-  } else if (s.includes(',')) {
-    s = s.replace(',', '.');
-  }
-  return parseFloat(s) || 0;
-}
-
-/**
- * Trata digitação livre no campo monetário:
- * Permite números, vírgula e ponto, mantendo no máximo 2 casas decimais sem travar
- */
-function tratarDigitacaoMoeda(valorDigitado) {
-  let limpo = String(valorDigitado).replace(/[^0-9.,]/g, '');
-  const sepIdx = limpo.search(/[.,]/);
-  if (sepIdx !== -1) {
-    const intPart = limpo.slice(0, sepIdx);
-    const sep = limpo[sepIdx];
-    const decPart = limpo.slice(sepIdx + 1).replace(/[.,]/g, '').slice(0, 2);
-    return `${intPart}${sep}${decPart}`;
-  }
-  return limpo;
-}
-
-/**
  * Componente ModalDetalhesEmprestimo
  * Exibe todos os dados do contrato, parcelas, saldos devedores (principal e juros)
  * e permite o registro de pagamentos especiais (juros/rolagem, abatimento de principal e quitação total).
@@ -121,12 +80,12 @@ export default function ModalDetalhesEmprestimo({ isOpen, emprestimoId, onClose,
         if (res.success) {
           setEmprestimo(res.data);
         } else {
-          alert(res.error || 'Erro ao carregar detalhes do empréstimo.');
+          toast.error(res.error || 'Erro ao carregar detalhes do empréstimo.');
         }
       }
     } catch (err) {
       console.error('[ModalDetalhesEmprestimo] Erro:', err);
-      alert(err.message || 'Erro ao conectar à API de empréstimos.');
+      toast.error(err.message || 'Erro ao conectar à API de empréstimos.');
     } finally {
       setCarregando(false);
     }
@@ -147,7 +106,7 @@ export default function ModalDetalhesEmprestimo({ isOpen, emprestimoId, onClose,
       : emprestimo.valor_juros_periodo || (emprestimo.valor_investido * (emprestimo.taxa_juros / 100));
 
     setTipoPagamento('juros');
-    setValorPago(formatarInputMoeda(jurosPadrao));
+    setValorPago(formatarNumeroPtBR(jurosPadrao));
     setDataPagamento(new Date().toISOString().split('T')[0]);
     setObservacao('');
     setIsPagamentoModalOpen(true);
@@ -162,28 +121,28 @@ export default function ModalDetalhesEmprestimo({ isOpen, emprestimoId, onClose,
       const juros = emprestimo.saldo_juros !== undefined && emprestimo.saldo_juros !== null
         ? emprestimo.saldo_juros
         : emprestimo.valor_juros_periodo || (emprestimo.valor_investido * (emprestimo.taxa_juros / 100));
-      setValorPago(formatarInputMoeda(juros));
+      setValorPago(formatarNumeroPtBR(juros));
     } else if (novoTipo === 'principal') {
       const principal = emprestimo.saldo_principal !== undefined && emprestimo.saldo_principal !== null
         ? emprestimo.saldo_principal
         : emprestimo.valor_investido;
-      setValorPago(formatarInputMoeda(principal));
+      setValorPago(formatarNumeroPtBR(principal));
     } else if (novoTipo === 'total') {
       const principal = emprestimo.saldo_principal !== undefined && emprestimo.saldo_principal !== null
         ? emprestimo.saldo_principal
         : emprestimo.valor_investido;
       const juros = Number(emprestimo.saldo_juros || 0);
-      setValorPago(formatarInputMoeda(principal + juros));
+      setValorPago(formatarNumeroPtBR(principal + juros));
     }
   };
 
   // Envio da operação para o backend IPC
   const handleConfirmarPagamento = async (e) => {
     if (e) e.preventDefault();
-    const numValor = converterStringParaFloat(valorPago);
+    const numValor = parseMoedaParaFloat(valorPago);
 
     if (isNaN(numValor) || numValor <= 0) {
-      alert('Por favor, informe um valor numérico válido maior que zero.');
+      toast.error('Por favor, informe um valor numérico válido maior que zero.');
       return;
     }
 
@@ -201,51 +160,59 @@ export default function ModalDetalhesEmprestimo({ isOpen, emprestimoId, onClose,
         const res = await window.api.emprestimos.pagamentoEspecial(payload);
 
         if (res.success) {
-          alert('Pagamento registrado com sucesso!');
           setIsPagamentoModalOpen(false);
           setObservacao('');
+          toast.success('Pagamento registrado com sucesso!');
           await carregarDetalhes();
           if (onRefresh) onRefresh();
         } else {
-          alert(res.error || 'Erro ao registrar pagamento especial.');
+          toast.error(res.error || 'Erro ao registrar pagamento especial.');
         }
       } else {
-        alert('API window.api.emprestimos.pagamentoEspecial não encontrada.');
+        toast.error('API window.api.emprestimos.pagamentoEspecial não encontrada.');
       }
     } catch (err) {
       console.error('[ModalDetalhesEmprestimo] Erro ao submeter pagamento especial:', err);
-      alert(err.message || 'Falha ao processar pagamento especial.');
+      toast.error(err.message || 'Falha ao processar pagamento especial.');
     } finally {
       setLoadingPagamento(false);
     }
   };
 
   // Baixa individual padrão de parcela
-  const handleBaixaParcela = async (parcela) => {
-    if (!window.confirm(`Confirmar recebimento da Parcela #${parcela.numero_parcela} no valor de ${formatarMoeda(parcela.valor)}?`)) {
-      return;
-    }
-    try {
-      if (window.api?.parcelas?.darBaixa) {
-        const dataHoje = new Date().toISOString().split('T')[0];
-        const res = await window.api.parcelas.darBaixa(parcela.id, dataHoje);
-        if (res.success) {
-          alert(`Parcela recebida! Entrada de ${formatarMoeda(parcela.valor)} registrada no caixa.`);
-          await carregarDetalhes();
-          if (onRefresh) onRefresh();
-        } else {
-          alert(res.error || 'Erro ao dar baixa na parcela.');
+  const handleBaixaParcela = (parcela) => {
+    toast(`Confirmar recebimento da Parcela #${parcela.numero_parcela}?`, {
+      description: `Valor: ${formatarMoeda(parcela.valor)}`,
+      action: {
+        label: 'Confirmar',
+        onClick: async () => {
+          try {
+            if (window.api?.parcelas?.darBaixa) {
+              const dataHoje = new Date().toISOString().split('T')[0];
+              const res = await window.api.parcelas.darBaixa(parcela.id, dataHoje);
+              if (res.success) {
+                toast.success(`Parcela #${parcela.numero_parcela} recebida! Entrada de ${formatarMoeda(parcela.valor)} registrada no caixa.`);
+                await carregarDetalhes();
+                if (onRefresh) onRefresh();
+              } else {
+                toast.error(res.error || 'Erro ao dar baixa na parcela.');
+              }
+            }
+          } catch (err) {
+            toast.error(err.message || 'Erro ao dar baixa.');
+          }
         }
+      },
+      cancel: {
+        label: 'Cancelar'
       }
-    } catch (err) {
-      alert(err.message || 'Erro ao dar baixa.');
-    }
+    });
   };
 
   // Envio de lembrete de cobrança no WhatsApp
   const handleCobrarWhatsApp = (parcela) => {
     if (!emprestimo?.cliente_telefone) {
-      alert(`O cliente "${emprestimo?.cliente_nome}" não possui telefone cadastrado.`);
+      toast.error(`O cliente "${emprestimo?.cliente_nome}" não possui telefone cadastrado.`);
       return;
     }
     const tel = String(emprestimo.cliente_telefone).replace(/\D/g, '');
@@ -561,7 +528,7 @@ export default function ModalDetalhesEmprestimo({ isOpen, emprestimoId, onClose,
             </div>
 
             {/* Formulário do Sub-modal */}
-            <form onSubmit={handleConfirmarPagamento} className="p-5 space-y-4">
+            <form onSubmit={handleConfirmarPagamento} onKeyDown={prevenirEnter} className="p-5 space-y-4">
               
               {/* Campo Tipo de Pagamento */}
               <div>
@@ -594,7 +561,7 @@ export default function ModalDetalhesEmprestimo({ isOpen, emprestimoId, onClose,
                   inputMode="decimal"
                   required
                   value={valorPago}
-                  onChange={(e) => setValorPago(tratarDigitacaoMoeda(e.target.value))}
+                  onChange={(e) => handleMoedaChange(e, setValorPago)}
                   placeholder="0,00"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                 />

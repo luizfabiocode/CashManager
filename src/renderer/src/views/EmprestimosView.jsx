@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { 
   CircleDollarSign, 
   Plus, 
@@ -14,11 +15,12 @@ import {
   DollarSign
 } from 'lucide-react';
 import ModalDetalhesEmprestimo from '../components/modals/ModalDetalhesEmprestimo';
-
-function formatarMoeda(valor) {
-  const num = typeof valor === 'number' ? valor : parseFloat(valor) || 0;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-}
+import { 
+  formatarMoeda, 
+  handleMoedaChange, 
+  parseMoedaParaFloat, 
+  prevenirEnter 
+} from '../utils/moeda';
 
 function formatarData(dataStr) {
   if (!dataStr) return '-';
@@ -115,13 +117,14 @@ export default function EmprestimosView() {
   // Submissão do novo empréstimo
   const handleSalvarNovoEmprestimo = async (e) => {
     e.preventDefault();
-    if (!novoClienteId) {
-      alert('Selecione um cliente.');
+    const clienteId = Number(novoClienteId);
+    if (!novoClienteId || isNaN(clienteId) || clienteId <= 0) {
+      toast.error('Cliente inválido ou não informado.');
       return;
     }
-    const val = parseFloat(novoValor.replace(',', '.'));
+    const val = parseMoedaParaFloat(novoValor);
     if (isNaN(val) || val <= 0) {
-      alert('Informe um valor de investimento válido maior que zero.');
+      toast.error('Informe um valor de investimento válido maior que zero.');
       return;
     }
 
@@ -129,25 +132,27 @@ export default function EmprestimosView() {
     try {
       if (window.api?.emprestimos?.criar) {
         const payload = {
-          clienteId: Number(novoClienteId),
-          valorInvestido: val,
-          taxaJuros: parseFloat(novaTaxa) || 0,
+          cliente_id: clienteId,
+          valor_investido: val,
+          taxa_juros: parseMoedaParaFloat(novaTaxa) || 0,
           parcelas: parseInt(novasParcelas, 10) || 1,
           frequencia: novaFrequencia,
-          dataInicio: novaDataInicio
+          data_inicio: novaDataInicio
         };
         const res = await window.api.emprestimos.criar(payload);
         if (res && (res.success || res.id)) {
-          alert('Empréstimo contratado com sucesso!');
           setIsNovoEmprestimoOpen(false);
+          toast.success('Empréstimo contratado com sucesso!');
           await carregarEmprestimos();
         } else {
-          alert(res?.error || 'Erro ao contratar empréstimo.');
+          toast.error(res?.error || 'Erro ao contratar empréstimo.');
         }
+      } else {
+        toast.error('API de empréstimos indisponível.');
       }
     } catch (err) {
-      console.error(err);
-      alert(err.message || 'Falha ao registrar empréstimo.');
+      console.error('[EmprestimosView] Erro ao registrar empréstimo:', err);
+      toast.error(err.message || 'Falha ao registrar empréstimo.');
     } finally {
       setSalvandoNovo(false);
     }
@@ -477,7 +482,7 @@ export default function EmprestimosView() {
               </button>
             </div>
 
-            <form onSubmit={handleSalvarNovoEmprestimo} className="p-6 space-y-4">
+            <form onSubmit={handleSalvarNovoEmprestimo} onKeyDown={prevenirEnter} className="p-6 space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">
                   Cliente Tomador *
@@ -485,7 +490,7 @@ export default function EmprestimosView() {
                 <select
                   required
                   value={novoClienteId}
-                  onChange={(e) => setNovoClienteId(e.target.value)}
+                  onChange={(e) => setNovoClienteId(e.target.value ? Number(e.target.value) : '')}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   <option value="">Selecione o cliente...</option>
@@ -503,13 +508,12 @@ export default function EmprestimosView() {
                     Valor Emprestado (R$) *
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
-                    min="1"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={novoValor}
-                    onChange={(e) => setNovoValor(e.target.value)}
-                    placeholder="1000.00"
+                    onChange={(e) => handleMoedaChange(e, setNovoValor)}
+                    placeholder="1.000,00"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
                   />
                 </div>
@@ -519,12 +523,11 @@ export default function EmprestimosView() {
                     Taxa de Juros (%) *
                   </label>
                   <input
-                    type="number"
-                    step="0.1"
-                    min="0"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={novaTaxa}
-                    onChange={(e) => setNovaTaxa(e.target.value)}
+                    onChange={(e) => handleMoedaChange(e, setNovaTaxa)}
                     placeholder="20"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold"
                   />
@@ -537,11 +540,12 @@ export default function EmprestimosView() {
                     Quantidade de Parcelas *
                   </label>
                   <input
-                    type="number"
-                    min="1"
+                    type="text"
+                    inputMode="numeric"
                     required
                     value={novasParcelas}
-                    onChange={(e) => setNovasParcelas(e.target.value)}
+                    onChange={(e) => setNovasParcelas(e.target.value.replace(/\D/g, ''))}
+                    placeholder="1"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-gray-50 dark:bg-gray-800/80 border border-gray-200 dark:border-gray-700 text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

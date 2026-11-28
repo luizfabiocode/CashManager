@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { 
   Users, 
   UserPlus, 
@@ -96,13 +97,13 @@ export default function ClientesView() {
     if (e) e.stopPropagation();
 
     if (!cliente.telefone) {
-      alert(`O cliente "${cliente.nome}" não possui telefone cadastrado.`);
+      toast.error(`O cliente "${cliente.nome}" não possui telefone cadastrado.`);
       return;
     }
 
     const limpo = String(cliente.telefone).replace(/\D/g, '');
     if (!limpo) {
-      alert(`O cliente "${cliente.nome}" não possui telefone válido cadastrado.`);
+      toast.error(`O cliente "${cliente.nome}" não possui telefone válido cadastrado.`);
       return;
     }
 
@@ -115,30 +116,39 @@ export default function ClientesView() {
   };
 
   // Exclusão de cliente
-  const handleExcluirCliente = async (cliente, e) => {
+  const handleExcluirCliente = (cliente, e) => {
     if (e) e.stopPropagation();
     
     if (cliente.emprestimos_ativos > 0) {
-      alert(`O cliente "${cliente.nome}" possui ${cliente.emprestimos_ativos} empréstimo(s) ativo(s) e não pode ser excluído.`);
+      toast.warning(`O cliente "${cliente.nome}" possui ${cliente.emprestimos_ativos} empréstimo(s) ativo(s) e não pode ser excluído.`);
       return;
     }
 
-    const confirmar = window.confirm(`Deseja realmente excluir o cliente "${cliente.nome}"? Esta ação é irreversível.`);
-    if (!confirmar) return;
-
-    try {
-      if (window.api?.clientes?.remover) {
-        const res = await window.api.clientes.remover(cliente.id);
-        if (res && (res.success || res.success !== false)) {
-          await carregarClientes();
-        } else {
-          alert(res?.error || 'Erro ao excluir cliente.');
+    toast(`Deseja realmente excluir o cliente "${cliente.nome}"?`, {
+      description: 'Esta ação é irreversível.',
+      action: {
+        label: 'Excluir',
+        onClick: async () => {
+          try {
+            if (window.api?.clientes?.remover) {
+              const res = await window.api.clientes.remover(cliente.id);
+              if (res && (res.success || res.success !== false)) {
+                toast.success('Cliente excluído com sucesso!');
+                await carregarClientes();
+              } else {
+                toast.error(res?.error || 'Erro ao excluir cliente.');
+              }
+            }
+          } catch (err) {
+            console.error('[ClientesView] Erro ao excluir cliente:', err);
+            toast.error(err.message || 'Falha ao remover cliente.');
+          }
         }
+      },
+      cancel: {
+        label: 'Cancelar'
       }
-    } catch (err) {
-      console.error('[ClientesView] Erro ao excluir cliente:', err);
-      alert(err.message || 'Falha ao remover cliente.');
-    }
+    });
   };
 
   // Filtro em tempo real por busca e status

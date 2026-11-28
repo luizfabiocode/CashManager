@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { 
   Wallet, 
   TrendingUp, 
@@ -12,11 +13,7 @@ import {
   MessageCircle,
   Users
 } from 'lucide-react';
-
-function formatarMoeda(valor) {
-  const num = typeof valor === 'number' ? valor : parseFloat(valor) || 0;
-  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(num);
-}
+import { formatarMoeda } from '../utils/moeda';
 
 function formatarData(dataStr) {
   if (!dataStr) return '-';
@@ -86,7 +83,7 @@ export default function DashboardView() {
 
     const telLimpo = String(parcela.cliente_telefone || '').replace(/\D/g, '');
     if (!telLimpo || telLimpo.length < 10) {
-      alert(`O cliente "${parcela.cliente_nome}" não possui telefone válido cadastrado.`);
+      toast.error(`O cliente "${parcela.cliente_nome}" não possui telefone válido cadastrado.`);
       return;
     }
 

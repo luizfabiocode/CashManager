@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { toast } from 'sonner';
 import { 
   User, 
   X, 
@@ -12,6 +13,7 @@ import {
   AlertCircle, 
   Info 
 } from 'lucide-react';
+import { prevenirEnter } from '../../utils/moeda';
 
 /**
  * Utilitário para formatar CPF (000.000.000-00)
@@ -157,7 +159,7 @@ export default function ModalCliente({
     if (!window.api?.anexos?.selecionar || !window.api?.anexos?.salvar) {
       const msg = 'Recurso de anexos não disponível no ambiente atual.';
       if (addToast) addToast(msg, 'error');
-      else alert(msg);
+      toast.error(msg);
       return;
     }
 
@@ -184,18 +186,19 @@ export default function ModalCliente({
         if (addToast) {
           addToast('Documento anexado com sucesso!', 'success');
         }
+        toast.success('Documento anexado com sucesso!');
         // 3. Atualiza a lista de anexos na tela
         await carregarAnexos();
       } else {
         const erroMsg = resSalvar?.error || 'Erro ao salvar o anexo do cliente.';
         if (addToast) addToast(erroMsg, 'error');
-        else alert(erroMsg);
+        toast.error(erroMsg);
       }
     } catch (err) {
       console.error('[ModalCliente] Falha ao anexar documento:', err);
       const erroMsg = err.message || 'Falha ao anexar documento.';
       if (addToast) addToast(erroMsg, 'error');
-      else alert(erroMsg);
+      toast.error(erroMsg);
     } finally {
       setAnexandoDocumento(false);
     }
@@ -210,7 +213,7 @@ export default function ModalCliente({
         if (res && res.success === false) {
           const msg = res.error || 'Não foi possível abrir o documento.';
           if (addToast) addToast(msg, 'error');
-          else alert(msg);
+          toast.error(msg);
         }
       } else {
         // Fallback para shell
@@ -222,40 +225,48 @@ export default function ModalCliente({
       console.error('[ModalCliente] Erro ao abrir documento:', err);
       const msg = err.message || 'Erro ao abrir documento.';
       if (addToast) addToast(msg, 'error');
-      else alert(msg);
+      toast.error(msg);
     }
   };
 
   // Remove um anexo com confirmação
-  const handleRemoverAnexo = async (anexo) => {
+  const handleRemoverAnexo = (anexo) => {
     if (!anexo?.id) return;
 
-    const confirma = window.confirm(`Deseja realmente remover o anexo "${anexo.nome_arquivo}"?`);
-    if (!confirma) return;
-
-    setRemovendoId(anexo.id);
-    try {
-      if (window.api?.anexos?.remover) {
-        const res = await window.api.anexos.remover(anexo.id, anexo.caminho_arquivo);
-        if (res && (res.success || res.success !== false)) {
-          if (addToast) {
-            addToast('Documento removido com sucesso!', 'success');
+    toast(`Deseja realmente remover o anexo "${anexo.nome_arquivo}"?`, {
+      action: {
+        label: 'Remover',
+        onClick: async () => {
+          setRemovendoId(anexo.id);
+          try {
+            if (window.api?.anexos?.remover) {
+              const res = await window.api.anexos.remover(anexo.id, anexo.caminho_arquivo);
+              if (res && (res.success || res.success !== false)) {
+                if (addToast) {
+                  addToast('Documento removido com sucesso!', 'success');
+                }
+                toast.success('Documento removido com sucesso!');
+                await carregarAnexos();
+              } else {
+                const msg = res?.error || 'Erro ao remover anexo.';
+                if (addToast) addToast(msg, 'error');
+                toast.error(msg);
+              }
+            }
+          } catch (err) {
+            console.error('[ModalCliente] Erro ao remover documento:', err);
+            const msg = err.message || 'Erro ao remover documento.';
+            if (addToast) addToast(msg, 'error');
+            toast.error(msg);
+          } finally {
+            setRemovendoId(null);
           }
-          await carregarAnexos();
-        } else {
-          const msg = res?.error || 'Erro ao remover anexo.';
-          if (addToast) addToast(msg, 'error');
-          else alert(msg);
         }
+      },
+      cancel: {
+        label: 'Cancelar'
       }
-    } catch (err) {
-      console.error('[ModalCliente] Erro ao remover documento:', err);
-      const msg = err.message || 'Erro ao remover documento.';
-      if (addToast) addToast(msg, 'error');
-      else alert(msg);
-    } finally {
-      setRemovendoId(null);
-    }
+    });
   };
 
   // Submissão do formulário de cliente (Criar ou Atualizar)
@@ -264,7 +275,7 @@ export default function ModalCliente({
     if (!nome.trim()) {
       const msg = 'O nome do cliente é obrigatório.';
       if (addToast) addToast(msg, 'error');
-      else alert(msg);
+      toast.error(msg);
       return;
     }
 
@@ -282,13 +293,14 @@ export default function ModalCliente({
         if (window.api?.clientes?.atualizar) {
           const res = await window.api.clientes.atualizar(clienteId, dadosCliente);
           if (res.success) {
-            if (addToast) addToast('Cliente atualizado com sucesso!', 'success');
-            if (onSuccess) onSuccess(res.data);
             if (onClose) onClose();
+            if (addToast) addToast('Cliente atualizado com sucesso!', 'success');
+            toast.success('Cliente atualizado com sucesso!');
+            if (onSuccess) onSuccess(res.data);
           } else {
             const erroMsg = res.error || 'Erro ao atualizar dados do cliente.';
             if (addToast) addToast(erroMsg, 'error');
-            else alert(erroMsg);
+            toast.error(erroMsg);
           }
         }
       } else {
@@ -296,13 +308,14 @@ export default function ModalCliente({
         if (window.api?.clientes?.criar) {
           const res = await window.api.clientes.criar(dadosCliente);
           if (res.success) {
-            if (addToast) addToast('Cliente cadastrado com sucesso!', 'success');
-            if (onSuccess) onSuccess(res.data);
             if (onClose) onClose();
+            if (addToast) addToast('Cliente cadastrado com sucesso!', 'success');
+            toast.success('Cliente cadastrado com sucesso!');
+            if (onSuccess) onSuccess(res.data);
           } else {
             const erroMsg = res.error || 'Erro ao cadastrar novo cliente.';
             if (addToast) addToast(erroMsg, 'error');
-            else alert(erroMsg);
+            toast.error(erroMsg);
           }
         }
       }
@@ -310,7 +323,7 @@ export default function ModalCliente({
       console.error('[ModalCliente] Erro ao salvar cliente:', err);
       const erroMsg = err.message || 'Erro ao processar formulário do cliente.';
       if (addToast) addToast(erroMsg, 'error');
-      else alert(erroMsg);
+      toast.error(erroMsg);
     } finally {
       setSalvando(false);
     }
@@ -354,7 +367,7 @@ export default function ModalCliente({
         <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
           
           {/* FORMULÁRIO DE DADOS CADASTRAIS */}
-          <form id="form-cliente" onSubmit={handleSubmitCliente} className="space-y-4">
+          <form id="form-cliente" onSubmit={handleSubmitCliente} onKeyDown={prevenirEnter} className="space-y-4">
             
             {/* Campo Nome */}
             <div>

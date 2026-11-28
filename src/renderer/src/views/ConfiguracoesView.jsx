@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { toast } from 'sonner';
 import { 
   Sun, 
   Moon, 
@@ -13,6 +14,7 @@ import {
   RefreshCw 
 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { prevenirEnter } from '../utils/moeda';
 
 /**
  * Tela de Configurações & Backup do Ca$hManager
@@ -45,7 +47,10 @@ export default function ConfiguracoesView({
     if (propAddToast) {
       propAddToast(msg, tipo);
     } else {
-      alert(msg);
+      if (tipo === 'success') toast.success(msg);
+      else if (tipo === 'error') toast.error(msg);
+      else if (tipo === 'warning') toast.warning(msg);
+      else toast(msg);
     }
   };
 
@@ -154,26 +159,34 @@ export default function ConfiguracoesView({
     }
   };
 
-  const handleRestaurar = async () => {
-    const confirmar = window.confirm(
-      'ATENÇÃO: A restauração substituirá todos os dados atuais do banco pelo arquivo selecionado. Deseja prosseguir?'
-    );
-    if (!confirmar) return;
-
-    try {
-      if (window.api?.backup) {
-        const res = await window.api.backup.restaurarBackup();
-        if (res.data?.cancelado) return;
-        if (res.success) {
-          alert('Banco de dados restaurado com sucesso! O aplicativo será recarregado.');
-          window.location.reload();
-        } else {
-          addToast(res.error || 'Erro ao restaurar backup.', 'error');
+  const handleRestaurar = () => {
+    toast('Deseja prosseguir com a restauração?', {
+      description: 'ATENÇÃO: A restauração substituirá todos os dados atuais do banco pelo arquivo selecionado.',
+      action: {
+        label: 'Restaurar',
+        onClick: async () => {
+          try {
+            if (window.api?.backup) {
+              const res = await window.api.backup.restaurarBackup();
+              if (res.data?.cancelado) return;
+              if (res.success) {
+                toast.success('Banco de dados restaurado com sucesso! O aplicativo será recarregado.');
+                setTimeout(() => {
+                  window.location.reload();
+                }, 1500);
+              } else {
+                addToast(res.error || 'Erro ao restaurar backup.', 'error');
+              }
+            }
+          } catch (err) {
+            addToast(err.message, 'error');
+          }
         }
+      },
+      cancel: {
+        label: 'Cancelar'
       }
-    } catch (err) {
-      addToast(err.message, 'error');
-    }
+    });
   };
 
   const handleExportarCSV = async (tabela, rotulo) => {
@@ -256,7 +269,7 @@ export default function ConfiguracoesView({
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
             Esta chave será incluída automaticamente nas mensagens de cobrança enviadas pelo WhatsApp.
           </p>
-          <form onSubmit={handleSalvarPix} className="space-y-3">
+          <form onSubmit={handleSalvarPix} onKeyDown={prevenirEnter} className="space-y-3">
             <div>
               <input
                 type="text"
@@ -291,7 +304,7 @@ export default function ConfiguracoesView({
         <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
           O PIN é criptografado com hash Bcrypt no banco de dados e protege o sistema contra acessos não autorizados.
         </p>
-        <form onSubmit={handleAtualizarPin} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+        <form onSubmit={handleAtualizarPin} onKeyDown={prevenirEnter} className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
           <div>
             <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
               Novo PIN (4 números)
